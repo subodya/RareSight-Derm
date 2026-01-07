@@ -1,0 +1,37 @@
+# Clinical text descriptions for DermaMNIST classes
+# Used for multi-modal learning
+
+0:
+  name: "Actinic keratoses and intraepithelial carcinoma"
+  description: "Rough, scaly patches on sun-exposed skin. Precancerous lesions with irregular texture, erythematous base, hyperkeratotic surface. Common on face, scalp, arms. Risk factor for squamous cell carcinoma."
+  keywords: ["hyperkeratotic", "scaly", "rough", "sun-damaged", "precancerous", "erythematous"]
+
+1:
+  name: "Basal cell carcinoma"
+  description: "Most common skin cancer. Pearly or waxy papule with rolled borders, telangiectasia, central ulceration. Slow-growing, locally invasive. Common on sun-exposed areas."
+  keywords: ["pearly", "rolled borders", "telangectasia", "ulcerated", "nodular", "translucent"]
+
+2:
+  name: "Benign keratosis-like lesions"
+  description: "Seborrheic keratoses: stuck-on appearance, waxy, brown to black. Well-demarcated, rough surface. Benign epidermal tumors, increase with age. No malignant potential."
+  keywords: ["stuck-on", "waxy", "brown", "rough", "well-demarcated", "benign"]
+
+3:
+  name: "Dermatofibroma"
+  description: "Firm papule or nodule, often on extremities. Dimple sign positive (central depression with lateral pressure). Brown to reddish color, fibrous composition. Benign dermal proliferation."
+  keywords: ["firm", "dimple sign", "fibrous", "nodular", "brown", "dermal"]
+
+4:
+  name: "Melanoma"
+  description: "Malignant melanocytic tumor. ABCDE criteria: Asymmetry, Border irregularity, Color variation, Diameter >6mm, Evolving. Variegated pigmentation, irregular borders, potential ulceration."
+  keywords: ["asymmetric", "irregular borders", "variegated", "pigmented", "malignant", "evolving"]
+
+5:
+  name: "Melanocytic nevi"
+  description: "Common moles: benign melanocytic proliferations. Symmetric, regular borders, uniform color (brown to black). Can be flat (junctional) or raised (compound/intradermal)."
+  keywords: ["symmetric", "regular borders", "uniform color", "benign", "brown", "mole"]
+
+6:
+  name: "Vascular lesions"
+  description: "Vascular proliferations including hemangiomas, angiokeratomas. Red to purple color, blanches with pressure. Range from flat patches to raised nodules. Benign vascular tumors."
+  keywords: ["vascular", "red", "purple", "blanching", "hemangioma", "benign"]

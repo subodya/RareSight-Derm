@@ -1,0 +1,120 @@
+# RareSight-Derm Configuration File
+
+# Dataset Configuration
+dataset:
+  name: "dermamnist"
+  download: true
+  root_dir: null
+  processed_dir: "./data/processed"
+  
+  # Image properties
+  original_size: 28
+  target_size: 224  # BiomedCLIP requirement
+  channels: 3  # DermaMNIST is RGB (28, 28, 3) 
+  
+  # Normalization (ImageNet statistics for BiomedCLIP)
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+  
+  # Class splits for meta-learning
+  meta_train_classes: [1, 2, 4, 5, 6]  # Basal cell, Benign keratosis, Melanoma, Melanocytic nevi, Vascular
+  meta_test_classes: [0, 3]  # Actinic keratoses, Dermatofibroma (minority)
+  
+  # Class names
+  class_names:
+    0: "Actinic keratoses and intraepithelial carcinoma"
+    1: "Basal cell carcinoma"
+    2: "Benign keratosis-like lesions"
+    3: "Dermatofibroma"
+    4: "Melanoma"
+    5: "Melanocytic nevi"
+    6: "Vascular lesions"
+
+# Few-Shot Configuration
+few_shot:
+  n_way: 5
+  k_shot: 5
+  n_query: 15
+  episodes: 10000
+  
+  # Curriculum learning schedule
+  curriculum:
+    - {episodes: [0, 2500], n_way: 3, k_shot: 10}
+    - {episodes: [2500, 5000], n_way: 4, k_shot: 7}
+    - {episodes: [5000, 7500], n_way: 5, k_shot: 5}
+    - {episodes: [7500, 9000], n_way: 6, k_shot: 3}
+    - {episodes: [9000, 10000], n_way: 5, k_shot: 5}
+
+# Augmentation Configuration
+augmentation:
+  train:
+    horizontal_flip: 0.5
+    rotation_degrees: 10
+    color_jitter:
+      brightness: 0.1
+      contrast: 0.1
+      saturation: 0.1
+      hue: 0.05
+    resize_mix: 0.5
+    mixup: 0.3
+    cutmix: 0.2
+  
+  test_time:
+    enabled: true
+    n_augmentations: 4
+    horizontal_flip: true
+    rotation_degrees: 10
+
+# Model Configuration
+model:
+  biomedclip:
+    model_name: "microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224"
+    vision_layers: [6, 12]  # Multi-scale extraction
+    freeze_backbone: true
+    embed_dim: 512
+  
+  fusion:
+    type: "cross_attention"  # Options: "concat", "attention", "gated"
+    hidden_dim: 1024
+    n_prompts: 4
+    dropout: 0.1
+  
+  prototype:
+    weighted: true
+    distance_metric: "cosine"  # Options: "cosine", "euclidean"
+    temperature: 1.0
+
+# Training Configuration
+training:
+  optimizer: "adam"
+  learning_rate:
+    frozen_layers: 1e-4
+    trainable_layers: 1e-3
+  scheduler: "cosine"
+  gradient_clip: 1.0
+  batch_size: 1  # 1 episode per batch
+  num_workers: 4
+  
+  # Loss weights
+  loss:
+    classification: 1.0
+    prototype_regularization: 0.1
+
+# Hardware Configuration
+hardware:
+  device: "cuda"  # "cuda" or "cpu"
+  gpu_id: 0
+  mixed_precision: true
+  
+# Logging Configuration
+logging:
+  log_dir: "./experiments"
+  save_frequency: 500  # Save checkpoint every N episodes
+  tensorboard: true
+  wandb: false  # Set true if using Weights & Biases
+  
+# Evaluation Configuration
+evaluation:
+  n_episodes: 600
+  n_seeds: 5
+  metrics: ["accuracy", "top3_accuracy", "auroc", "ece", "entropy"]
