@@ -118,3 +118,78 @@ evaluation:
   n_episodes: 600
   n_seeds: 5
   metrics: ["accuracy", "top3_accuracy", "auroc", "ece", "entropy"]
+
+
+
+# Baseline Configurations
+baselines:
+  transfer_learning:
+    model: "resnet50"
+    pretrained: true
+    freeze_backbone: false  # Fine-tune entire network
+    num_epochs: 50
+    batch_size: 64
+    learning_rate: 1e-4
+    weight_decay: 1e-4
+    scheduler: "cosine"
+    early_stopping_patience: 10
+    
+    # Data augmentation
+    augmentation:
+      random_horizontal_flip: 0.5
+      random_rotation: 15
+      color_jitter:
+        brightness: 0.2
+        contrast: 0.2
+        saturation: 0.2
+    
+    # Checkpoint settings
+    save_dir: "./experiments/baseline/transfer_learning"
+    save_best_only: true
+    # Baseline 2: Standard ProtoNet
+
+    
+  standard_protonet:
+    backbone: "resnet50"
+    pretrained: true
+    freeze_backbone: false
+    feature_dim: 512  # Projection from 2048 to 512
+    
+    # Episodic training
+    n_way: 5
+    k_shot: 5
+    n_query: 15
+    episodes: 10000
+    
+    # Optimization
+    learning_rate: 1e-3
+    weight_decay: 1e-4
+    scheduler: "cosine"
+    
+    # Distance metric
+    distance: "euclidean"  # "euclidean" or "cosine"
+    
+    # Checkpoint
+    save_dir: "./experiments/baseline/standard_protonet"
+    save_frequency: 500
+    
+  zero_shot_biomedclip:
+    model_name: "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224"
+    batch_size: 32
+    temperature: 0.07
+    
+    # Text prompts for zero-shot classification
+    prompt_template: "A dermoscopy image of {class_name}"
+    
+    # Evaluation settings
+    save_dir: "./experiments/baseline/zero_shot_biomedclip"
+
+    # RareSight-Lite Demo Configuration
+  raresight_lite:
+    model: "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224"
+    fusion_dim: 512
+    learning_rate: 1e-3
+    episodes: 2000
+    n_way: 5
+    k_shot: 5
+    n_query: 15
