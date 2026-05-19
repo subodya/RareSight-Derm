@@ -2,25 +2,45 @@
 
 # Dataset Configuration
 dataset:
-  name: "dermamnist"
+  # ── Primary dataset ──────────────────────────────────────────────────
+  # "ham10000"  (recommended) — full 600×450 dermoscopy images
+  # "dermamnist" (legacy)     — 28×28 thumbnails
+  name: "ham10000"
+
+  # Path to HAM10000 root (relative to repo root, or absolute).
+  # Expected layout:
+  #   data/ham10000/HAM10000_metadata.csv
+  #   data/ham10000/HAM10000_images_part1/*.jpg
+  #   data/ham10000/HAM10000_images_part2/*.jpg   (optional second part)
+  # Download: https://www.kaggle.com/datasets/kmader/skin-lesion-analysis-toward-melanoma-detection
+  ham10000_dir: "data/ham10000"
+
+  # Stratified split ratios (only used for HAM10000; DermaMNIST has pre-defined splits)
+  val_size: 0.10
+  test_size: 0.10
+  split_seed: 42
+
+  # Legacy DermaMNIST fields (kept for backward compat)
   download: true
   root_dir: null
   processed_dir: "./data/processed"
-  
+
   # Image properties
-  original_size: 28
-  target_size: 224  # BiomedCLIP requirement
-  channels: 3  # DermaMNIST is RGB (28, 28, 3) 
-  
-  # Normalization (ImageNet statistics for BiomedCLIP)
+  target_size: 224          # BiomedCLIP input resolution
+  channels: 3
+
+  # Normalization (ImageNet statistics — BiomedCLIP uses these)
   mean: [0.485, 0.456, 0.406]
-  std: [0.229, 0.224, 0.225]
-  
-  # Class splits for meta-learning
-  meta_train_classes: [1, 2, 4, 5, 6]  # Basal cell, Benign keratosis, Melanoma, Melanocytic nevi, Vascular
-  meta_test_classes: [0, 3]  # Actinic keratoses, Dermatofibroma (minority)
-  
-  # Class names
+  std:  [0.229, 0.224, 0.225]
+
+  # Minority-class threshold for ClassBalancedSampler
+  minority_threshold: 300   # HAM10000 has more samples per class than DermaMNIST
+
+  # Class splits for meta-learning (all 7 classes available)
+  meta_train_classes: [0, 1, 2, 4, 5, 6]  # 6 classes for training
+  meta_test_classes:  [3]                   # Dermatofibroma held out
+
+  # Class names (mirrors HAM10000_LABEL_MAP in preprocessing.py)
   class_names:
     0: "Actinic keratoses and intraepithelial carcinoma"
     1: "Basal cell carcinoma"
@@ -35,8 +55,8 @@ few_shot:
   n_way: 5
   k_shot: 5
   n_query: 15
-  episodes: 10000
-  
+  episodes: 8000
+
   # Curriculum learning schedule
   curriculum:
     - {episodes: [0, 2500], n_way: 3, k_shot: 10}

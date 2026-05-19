@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(grep -E \"\\\\.py$\")",
+      "PowerShell(New-Item *)",
+      "WebSearch",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\subod\\\\OneDrive\\\\Desktop\\\\FINAL-YEAR-PROJECT\\\\RareSight-Derm\" -Force | Select-Object Name, @{n='Type';e={if\\($_.PSIsContainer\\){'Dir'}else{'File'}}})",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\subod\\\\OneDrive\\\\Desktop\\\\FINAL-YEAR-PROJECT\\\\RareSight-Derm\" -Recurse -Directory | Where-Object {$_.Name -notmatch 'node_modules'} | Select-Object FullName | Sort-Object | ForEach-Object {$_.FullName.Replace\\('C:\\\\Users\\\\subod\\\\OneDrive\\\\Desktop\\\\FINAL-YEAR-PROJECT\\\\RareSight-Derm\\\\', ''\\)})",
+      "Bash(Copy-Item -Path \"C:\\\\Users\\\\subod\\\\.claude\\\\projects\\\\C--Users-subod-OneDrive-Desktop-FINAL-YEAR-PROJECT-RareSight-Derm\\\\86b5fa41-1817-475f-b341-1bb897f4260f\\\\tool-results\\\\design_files\\\\raresight\\\\project\\\\prototype\\\\raresight-logo.png\" -Destination \"C:\\\\Users\\\\subod\\\\OneDrive\\\\Desktop\\\\FINAL-YEAR-PROJECT\\\\RareSight-Derm\\\\src\\\\app\\\\frontend\\\\public\\\\raresight-logo.png\" -Force)",
+      "Bash(Write-Output \"Copied\")",
+      "Bash(Get-ChildItem *)",
+      "Bash(powershell -Command \"if\\(Test-Path 'src/app/assets/disease_metadata.json'\\) { Get-Content 'src/app/assets/disease_metadata.json' -First 50 } else { 'Not found' }\")",
+      "Bash(powershell -Command \"if\\(Test-Path 'notebooks/evaluation.ipynb'\\) { 'Found' } else { 'Not found' }\")"
+    ]
+  }
+}

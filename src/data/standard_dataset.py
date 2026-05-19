@@ -1,159 +1,133 @@
 """
-Standard dataset for supervised learning baselines
-Returns individual (image, label) pairs
+Standard dataset for supervised learning baselines.
+Returns individual (image, label) pairs for batch training.
+Supports HAM10000 (primary) and DermaMNIST (legacy fallback).
 """
 
 import os
 import torch
 from torch.utils.data import Dataset
 import numpy as np
-from typing import Tuple, Optional
-import medmnist
-from medmnist import INFO
+from PIL import Image
 import yaml
 
-from src.data.preprocessing import DermaMNISTPreprocessor
+from src.data.preprocessing import (
+    DermaMNISTPreprocessor,
+    load_ham10000,
+    HAM10000_CLASS_NAMES,
+    _resolve_config,
+)
 
 
 class StandardDermaMNIST(Dataset):
     """
-    Standard dataset for supervised learning
-    Returns (image, label) pairs for batch training
+    Standard supervised-learning dataset.
+    Loads HAM10000 by default; falls back to DermaMNIST when
+    config['dataset']['name'] == 'dermamnist'.
     """
-    
+
     def __init__(
         self,
         split: str = "train",
         config_path: str = "configs/config.yaml",
         download: bool = True,
-        augment: bool = False
+        augment: bool = False,
     ):
-        """
-        Args:
-            split: "train", "val", or "test"
-            config_path: Path to configuration file
-            download: Whether to download DermaMNIST
-            augment: Apply data augmentation (training only)
-        """
-        # Load config
-        if not os.path.isabs(config_path):
-            if os.path.exists(config_path):
-                config_full_path = config_path
-            else:
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                project_root = os.path.dirname(os.path.dirname(current_dir))
-                config_full_path = os.path.join(project_root, config_path)
-        else:
-            config_full_path = config_path
-        
-        with open(config_full_path, 'r') as f:
+        config_full_path = _resolve_config(config_path)
+        with open(config_full_path, "r") as f:
             self.config = yaml.safe_load(f)
-        
+
         self.split = split
         self.augment = augment and (split == "train")
-        
-        # Load DermaMNIST
-        data_flag = 'dermamnist'
-        
-        # Handle root directory
-        root_dir_config = self.config['dataset']['root_dir']
-        if root_dir_config is None or root_dir_config == "":
+        self.preprocessor = DermaMNISTPreprocessor(config_full_path)
+
+        dataset_name = self.config["dataset"].get("name", "ham10000").lower()
+
+        if dataset_name == "ham10000":
+            self._load_ham10000()
+        else:
+            self._load_dermamnist(download)
+
+        unique, counts = np.unique(self.labels, return_counts=True)
+        self.class_counts = dict(zip(unique.tolist(), counts.tolist()))
+
+        print(f"\nLoaded {'HAM10000' if self._use_paths else 'DermaMNIST'} [{split}] (Standard):")
+        print(f"  Total samples : {len(self)}")
+        for cls_id in sorted(self.class_counts):
+            name = self.class_names.get(cls_id, str(cls_id))
+            print(f"  Class {cls_id} ({name}): {self.class_counts[cls_id]}")
+
+    # ------------------------------------------------------------------ #
+    # Loaders                                                              #
+    # ------------------------------------------------------------------ #
+
+    def _load_ham10000(self) -> None:
+        self._use_paths = True
+
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(current_dir))
+
+        ham_dir = self.config["dataset"].get("ham10000_dir", "data/ham10000")
+        if not os.path.isabs(ham_dir):
+            ham_dir = os.path.join(project_root, ham_dir)
+
+        self.image_paths, self.labels = load_ham10000(
+            data_root=ham_dir,
+            split=self.split,
+            val_size=self.config["dataset"].get("val_size", 0.1),
+            test_size=self.config["dataset"].get("test_size", 0.1),
+            seed=self.config["dataset"].get("split_seed", 42),
+        )
+        self.class_names = HAM10000_CLASS_NAMES
+
+    def _load_dermamnist(self, download: bool) -> None:
+        import medmnist
+        from medmnist import INFO
+
+        self._use_paths = False
+
+        root_dir = self.config["dataset"].get("root_dir") or ""
+        if not root_dir:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.dirname(os.path.dirname(current_dir))
             root_dir = os.path.join(project_root, "data", "raw")
-        elif not os.path.isabs(root_dir_config):
+        elif not os.path.isabs(root_dir):
             current_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.dirname(os.path.dirname(current_dir))
-            root_dir = os.path.join(project_root, root_dir_config)
-        else:
-            root_dir = root_dir_config
-        
+            root_dir = os.path.join(project_root, root_dir)
+
         os.makedirs(root_dir, exist_ok=True)
-        
-        DataClass = getattr(medmnist, INFO[data_flag]['python_class'])
-        self.dataset = DataClass(
-            split=split,
-            download=download,
-            root=root_dir
-        )
-        
-        # Initialize preprocessor
-        self.preprocessor = DermaMNISTPreprocessor(config_full_path)
-        
-        # Extract images and labels
-        self.images = self.dataset.imgs  # (N, 28, 28, 3)
-        self.labels = self.dataset.labels.flatten()  # (N,)
-        
-        # Class names
-        self.class_names = self.config['dataset']['class_names']
-        
-        # Count samples per class
-        unique, counts = np.unique(self.labels, return_counts=True)
-        self.class_counts = dict(zip(unique, counts))
-        
-        print(f"\nLoaded DermaMNIST {split} set (Standard):")
-        print(f"  Total samples: {len(self.images)}")
-        print(f"  Class distribution:")
-        for cls_id in sorted(self.class_counts.keys()):
-            print(f"    {cls_id}: {self.class_counts[cls_id]} samples")
-    
+        DataClass = getattr(medmnist, INFO["dermamnist"]["python_class"])
+        dataset = DataClass(split=self.split, download=download, root=root_dir)
+
+        self.images = dataset.imgs
+        self.labels = dataset.labels.flatten()
+        self.class_names = self.config["dataset"].get("class_names", {})
+
+    # ------------------------------------------------------------------ #
+    # Dataset protocol                                                     #
+    # ------------------------------------------------------------------ #
+
     def __len__(self) -> int:
-        return len(self.images)
-    
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
-        """
-        Get one (image, label) pair
-        
-        Args:
-            idx: Index
-        
-        Returns:
-            image: Preprocessed tensor (3, 224, 224)
-            label: Class label (int)
-        """
-        # Get image and label
-        image = self.images[idx]
+        return len(self.image_paths) if self._use_paths else len(self.images)
+
+    def __getitem__(self, idx: int):
         label = int(self.labels[idx])
-        
-        # Preprocess
-        image_tensor = self.preprocessor.preprocess_image(image)
-        
-        # TODO: Add augmentation if self.augment
-        # (Will implement in training script with torchvision transforms)
-        
+
+        if self._use_paths:
+            pil = Image.open(self.image_paths[idx]).convert("RGB")
+            image_tensor = self.preprocessor.preprocess_pil(pil, augment=self.augment)
+        else:
+            image_tensor = self.preprocessor.preprocess_image(self.images[idx], augment=self.augment)
+
         return image_tensor, label
 
-
-# Test the dataset
-if __name__ == "__main__":
-    print("Testing StandardDermaMNIST dataset...\n")
-    
-    # Create dataset
-    train_dataset = StandardDermaMNIST(split="train", download=True)
-    val_dataset = StandardDermaMNIST(split="val", download=True)
-    test_dataset = StandardDermaMNIST(split="test", download=True)
-    
-    # Test __getitem__
-    img, label = train_dataset[0]
-    print(f"\nSample data point:")
-    print(f"  Image shape: {img.shape}")
-    print(f"  Label: {label}")
-    print(f"  Label type: {type(label)}")
-    
-    # Create DataLoader
-    from torch.utils.data import DataLoader
-    
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=32,
-        shuffle=True,
-        num_workers=0  # Set to 4 for actual training
-    )
-    
-    # Test batch
-    batch_img, batch_label = next(iter(train_loader))
-    print(f"\nBatch shapes:")
-    print(f"  Images: {batch_img.shape}")
-    print(f"  Labels: {batch_label.shape}")
-    
-    print("\nDataset test successful!")
+    # Convenience: class weights for focal / weighted cross-entropy loss
+    def get_class_weights(self) -> torch.Tensor:
+        """Inverse-frequency class weights for imbalanced training."""
+        n_classes = len(self.class_counts)
+        total = sum(self.class_counts.values())
+        weights = torch.zeros(n_classes)
+        for cls_id, count in self.class_counts.items():
+            weights[cls_id] = total / (n_classes * count)
+        return weights / weights.sum() * n_classes  # normalise so sum = n_classes

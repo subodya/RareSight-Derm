@@ -1,294 +1,272 @@
 """
-Preprocessing utilities for RareSight-Derm
-Handles DermaMNIST data loading, resizing, normalization
+Preprocessing utilities for RareSight-Derm.
+Supports both DermaMNIST (numpy arrays) and HAM10000 (PIL images from file paths).
 """
+
 import os
+import glob
 import torch
 import numpy as np
+import pandas as pd
 from PIL import Image
 import torchvision.transforms as transforms
-from typing import Tuple, List, Optional
+from sklearn.model_selection import StratifiedShuffleSplit
+from typing import Tuple, List, Optional, Dict
 import yaml
 from pathlib import Path
 
+# HAM10000 dx value → integer class (mirrors DermaMNIST label ordering).
+# Includes both the short abbreviations (Kaggle CSV) and the full names
+# used by the marmal88/skin_cancer HuggingFace download.
+HAM10000_LABEL_MAP: Dict[str, int] = {
+    # Short abbreviations (original Kaggle metadata)
+    "akiec": 0,
+    "bcc":   1,
+    "bkl":   2,
+    "df":    3,
+    "mel":   4,
+    "nv":    5,
+    "vasc":  6,
+    # Full names (marmal88/skin_cancer HuggingFace download)
+    "actinic_keratoses":          0,
+    "basal_cell_carcinoma":       1,
+    "benign_keratosis-like_lesions": 2,
+    "dermatofibroma":             3,
+    "melanoma":                   4,
+    "melanocytic_Nevi":           5,
+    "vascular_lesions":           6,
+}
+
+HAM10000_CLASS_NAMES: Dict[int, str] = {
+    0: "Actinic keratoses and intraepithelial carcinoma",
+    1: "Basal cell carcinoma",
+    2: "Benign keratosis-like lesions",
+    3: "Dermatofibroma",
+    4: "Melanoma",
+    5: "Melanocytic nevi",
+    6: "Vascular lesions",
+}
+
+
+# ---------------------------------------------------------------------------
+# Config helper
+# ---------------------------------------------------------------------------
+
+def _resolve_config(config_path: str) -> str:
+    if os.path.isabs(config_path) or os.path.exists(config_path):
+        return config_path
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(current_dir))
+    full = os.path.join(project_root, config_path)
+    if not os.path.exists(full):
+        raise FileNotFoundError(f"Config not found: {config_path}")
+    return full
+
+
+# ---------------------------------------------------------------------------
+# Image preprocessor (works for both numpy arrays and PIL images)
+# ---------------------------------------------------------------------------
 
 class DermaMNISTPreprocessor:
     """
-    Preprocesses DermaMNIST images for BiomedCLIP
-    - Resize 28×28 → 224×224
-    - Handle both grayscale and RGB images
-    - Normalize with ImageNet statistics
+    Preprocesses skin lesion images for BiomedCLIP (224×224, ImageNet norm).
+    Accepts either numpy uint8 arrays (DermaMNIST) or PIL.Image objects (HAM10000).
     """
-    
+
     def __init__(self, config_path: str = "configs/config.yaml"):
-        """
-        Args:
-            config_path: Path to configuration file
-        """
-        if not os.path.isabs(config_path):
-            if os.path.exists(config_path):
-                config_full_path = config_path
-            else:
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                project_root = os.path.dirname(os.path.dirname(current_dir))
-                config_full_path = os.path.join(project_root, config_path)
-                
-                if not os.path.exists(config_full_path):
-                    raise FileNotFoundError(
-                        f"Config file not found at {config_path} or {config_full_path}. "
-                        f"Current directory: {os.getcwd()}"
-                    )
-        else:
-            config_full_path = config_path
-        
-        with open(config_full_path, 'r') as f:
+        config_full_path = _resolve_config(config_path)
+        with open(config_full_path, "r") as f:
             self.config = yaml.safe_load(f)
-                
-            self.original_size = self.config['dataset']['original_size']
-            self.target_size = self.config['dataset']['target_size']
-            self.mean = self.config['dataset']['mean']
-            self.std = self.config['dataset']['std']
-            
-            self.transform = self._build_transform()
-        
+
+        self.target_size = self.config["dataset"]["target_size"]
+        self.mean = self.config["dataset"]["mean"]
+        self.std  = self.config["dataset"]["std"]
+        self.transform = self._build_transform()
+        self.aug_transform = self._build_aug_transform()
+
     def _build_transform(self) -> transforms.Compose:
-        """Build torchvision transform pipeline"""
         return transforms.Compose([
-            #Resize from 28×28 to 224×224
             transforms.Resize(
                 (self.target_size, self.target_size),
-                interpolation=transforms.InterpolationMode.BILINEAR
+                interpolation=transforms.InterpolationMode.BILINEAR,
             ),
             transforms.ToTensor(),
-            transforms.Normalize(mean=self.mean, std=self.std)
+            transforms.Normalize(mean=self.mean, std=self.std),
         ])
-    
-    def preprocess_image(self, image: np.ndarray) -> torch.Tensor:
-        """
-        Preprocess a single DermaMNIST image
-        
-        Args:
-            image: NumPy array of shape (28, 28), (28, 28, 1), or (28, 28, 3)
-        
-        Returns:
-            Preprocessed tensor of shape (3, 224, 224)
-        """
-        if image.ndim == 2:
-            image = image[:, :, np.newaxis]
-            image_rgb = np.repeat(image, 3, axis=2)
-        elif image.ndim == 3:
-            if image.shape[2] == 1:
-                image_rgb = np.repeat(image, 3, axis=2)
-            elif image.shape[2] == 3:
-                image_rgb = image
-            else:
-                raise ValueError(f"Unexpected number of channels: {image.shape[2]}")
-        else:
-            raise ValueError(f"Unexpected image dimensions: {image.ndim}")
-        
-        # Ensure uint8 type for PIL
-        if image_rgb.dtype != np.uint8:
-            if image_rgb.max() <= 1.0:
-                image_rgb = (image_rgb * 255).astype(np.uint8)
-            else:
-                image_rgb = image_rgb.astype(np.uint8)
-        
-        pil_image = Image.fromarray(image_rgb)
-        
-        tensor = self.transform(pil_image)
-        
-        return tensor
-    
-    def preprocess_batch(self, images: np.ndarray) -> torch.Tensor:
-        """
-        Preprocess a batch of images
-        
-        Args:
-            images: NumPy array of shape (B, 28, 28) or (B, 28, 28, 1) or (B, 28, 28, 3)
-        
-        Returns:
-            Batch tensor of shape (B, 3, 224, 224)
-        """
-        batch_tensors = []
-        for img in images:
-            tensor = self.preprocess_image(img)
-            batch_tensors.append(tensor)
-        
-        return torch.stack(batch_tensors, dim=0)
-    
-    def denormalize(self, tensor: torch.Tensor) -> np.ndarray:
-        """
-        Reverse normalization for visualization
-        
-        Args:
-            tensor: Normalized tensor of shape (3, 224, 224)
-        
-        Returns:
-            Denormalized array for visualization
-        """
-        denorm = tensor.clone()
-        
-        for t, m, s in zip(denorm, self.mean, self.std):
-            t.mul_(s).add_(m)
-        
-        denorm = torch.clamp(denorm, 0, 1)
-        
-        return denorm.permute(1, 2, 0).cpu().numpy()
 
+    def _build_aug_transform(self) -> transforms.Compose:
+        return transforms.Compose([
+            transforms.RandomResizedCrop(
+                self.target_size, scale=(0.8, 1.0),
+                interpolation=transforms.InterpolationMode.BILINEAR,
+            ),
+            transforms.RandomHorizontalFlip(0.5),
+            transforms.RandomVerticalFlip(0.2),
+            transforms.RandomRotation(20),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.15, hue=0.05),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=self.mean, std=self.std),
+        ])
+
+    # ------------------------------------------------------------------ #
+    # Public API — accepts PIL.Image or numpy array                        #
+    # ------------------------------------------------------------------ #
+
+    def preprocess_pil(self, image: Image.Image, augment: bool = False) -> torch.Tensor:
+        """Preprocess a PIL.Image (HAM10000 path)."""
+        image = image.convert("RGB")
+        tfm = self.aug_transform if augment else self.transform
+        return tfm(image)
+
+    def preprocess_image(self, image: np.ndarray, augment: bool = False) -> torch.Tensor:
+        """Preprocess a numpy uint8 array (DermaMNIST format)."""
+        if image.ndim == 2:
+            image = np.stack([image] * 3, axis=-1)
+        elif image.shape[-1] == 1:
+            image = np.repeat(image, 3, axis=-1)
+
+        if image.dtype != np.uint8:
+            image = (image * 255).astype(np.uint8) if image.max() <= 1.0 else image.astype(np.uint8)
+
+        pil = Image.fromarray(image)
+        return self.preprocess_pil(pil, augment=augment)
+
+    def preprocess_batch(self, images: np.ndarray, augment: bool = False) -> torch.Tensor:
+        return torch.stack([self.preprocess_image(img, augment) for img in images])
+
+    def denormalize(self, tensor: torch.Tensor) -> np.ndarray:
+        t = tensor.clone()
+        for c, m, s in zip(t, self.mean, self.std):
+            c.mul_(s).add_(m)
+        return torch.clamp(t, 0, 1).permute(1, 2, 0).cpu().numpy()
+
+
+# ---------------------------------------------------------------------------
+# HAM10000 loader
+# ---------------------------------------------------------------------------
+
+def load_ham10000(
+    data_root: str,
+    split: str,
+    val_size: float = 0.1,
+    test_size: float = 0.1,
+    seed: int = 42,
+) -> Tuple[List[str], np.ndarray]:
+    """
+    Load HAM10000 dataset from disk.
+
+    Expects this layout under `data_root`:
+        HAM10000_metadata.csv
+        <any subdirectories or root>/<image_id>.jpg
+
+    Args:
+        data_root:  Path to HAM10000 root directory.
+        split:      "train", "val", or "test".
+        val_size:   Fraction for validation split.
+        test_size:  Fraction for test split.
+        seed:       Random seed for reproducibility.
+
+    Returns:
+        image_paths:  List[str] — absolute paths to JPEG files.
+        labels:       np.ndarray[int] — integer class labels (0–6).
+    """
+    meta_csv = os.path.join(data_root, "HAM10000_metadata.csv")
+    if not os.path.exists(meta_csv):
+        raise FileNotFoundError(
+            f"HAM10000_metadata.csv not found in {data_root}.\n"
+            "Download HAM10000 from https://www.kaggle.com/datasets/kmader/skin-lesion-analysis-toward-melanoma-detection\n"
+            f"and extract it to:  {data_root}"
+        )
+
+    meta = pd.read_csv(meta_csv)
+
+    # Build image_id → path map by scanning all subdirectories
+    id_to_path: Dict[str, str] = {}
+    for jpg in glob.glob(os.path.join(data_root, "**", "*.jpg"), recursive=True):
+        img_id = os.path.splitext(os.path.basename(jpg))[0]
+        id_to_path[img_id] = jpg
+    # Also check root for flat layouts
+    for jpg in glob.glob(os.path.join(data_root, "*.jpg")):
+        img_id = os.path.splitext(os.path.basename(jpg))[0]
+        if img_id not in id_to_path:
+            id_to_path[img_id] = jpg
+
+    # Keep only rows with a found image
+    meta = meta[meta["image_id"].isin(id_to_path)].copy()
+    if len(meta) == 0:
+        raise FileNotFoundError(
+            f"No .jpg images found under {data_root}. "
+            "Make sure the HAM10000 image folders (HAM10000_images_part1, etc.) are present."
+        )
+
+    meta["label"] = meta["dx"].map(HAM10000_LABEL_MAP)
+    missing = meta["label"].isna()
+    if missing.any():
+        unknown = meta.loc[missing, "dx"].unique().tolist()
+        raise ValueError(f"Unknown dx labels in metadata: {unknown}")
+
+    meta["label"] = meta["label"].astype(int)
+    meta["path"] = meta["image_id"].map(id_to_path)
+
+    all_paths = meta["path"].values
+    all_labels = meta["label"].values
+
+    # Stratified split: train / val / test
+    # First split off test
+    sss_test = StratifiedShuffleSplit(n_splits=1, test_size=test_size, random_state=seed)
+    train_val_idx, test_idx = next(sss_test.split(all_paths, all_labels))
+
+    # Then split val from train
+    val_fraction = val_size / (1.0 - test_size)
+    sss_val = StratifiedShuffleSplit(n_splits=1, test_size=val_fraction, random_state=seed)
+    train_idx, val_idx = next(sss_val.split(all_paths[train_val_idx], all_labels[train_val_idx]))
+    train_idx = train_val_idx[train_idx]
+    val_idx   = train_val_idx[val_idx]
+
+    idx_map = {"train": train_idx, "val": val_idx, "test": test_idx}
+    if split not in idx_map:
+        raise ValueError(f"split must be 'train', 'val', or 'test', got '{split}'")
+
+    chosen = idx_map[split]
+    return list(all_paths[chosen]), all_labels[chosen]
+
+
+# ---------------------------------------------------------------------------
+# Class-balanced sampler (unchanged public API)
+# ---------------------------------------------------------------------------
 
 class ClassBalancedSampler:
     """
-    Samples episodes with balanced representation of minority classes
-    Critical for handling DermaMNIST's class imbalance
+    Samples N-way episodes with increased probability of minority classes.
     """
-    
+
     def __init__(
         self,
-        class_counts: dict,
+        class_counts: Dict[int, int],
         minority_threshold: int = 200,
-        minority_prob: float = 0.4
+        minority_prob: float = 0.4,
     ):
-        """
-        Args:
-            class_counts: Dictionary mapping class_id → number of samples
-            minority_threshold: Classes with < threshold samples are "minority"
-            minority_prob: Probability of including minority class in episode
-        """
         self.class_counts = class_counts
         self.minority_threshold = minority_threshold
         self.minority_prob = minority_prob
-        
-        # Categorizing classes
-        self.minority_classes = [
-            cls for cls, count in class_counts.items()
-            if count < minority_threshold
-        ]
-        self.majority_classes = [
-            cls for cls, count in class_counts.items()
-            if count >= minority_threshold
-        ]
-        
-        print(f"Minority classes (<{minority_threshold} samples): {self.minority_classes}")
-        print(f"Majority classes (≥{minority_threshold} samples): {self.majority_classes}")
-    
+
+        self.minority_classes = [c for c, n in class_counts.items() if n < minority_threshold]
+        self.majority_classes = [c for c, n in class_counts.items() if n >= minority_threshold]
+
+        print(f"  Minority classes (<{minority_threshold}): {self.minority_classes}")
+        print(f"  Majority classes (≥{minority_threshold}): {self.majority_classes}")
+
     def sample_classes(self, n_way: int) -> List[int]:
-        """
-        Sample N classes with balanced minority representation
-        
-        Args:
-            n_way: Number of classes to sample
-        
-        Returns:
-            List of class IDs
-        """
         include_minority = (
-            len(self.minority_classes) > 0 and
-            np.random.rand() < self.minority_prob
+            len(self.minority_classes) > 0
+            and np.random.rand() < self.minority_prob
         )
-        
+        all_classes = self.minority_classes + self.majority_classes
+
         if include_minority and n_way > 1:
-            n_minority = min(
-                np.random.randint(1, 3),
-                len(self.minority_classes),
-                n_way
-            )
-            minority_sample = np.random.choice(
-                self.minority_classes,
-                size=n_minority,
-                replace=False
-            )
-            
-            n_majority = n_way - n_minority
-            majority_sample = np.random.choice(
-                self.majority_classes,
-                size=n_majority,
-                replace=False
-            )
-            
-            sampled_classes = np.concatenate([minority_sample, majority_sample])
-        else:
-            all_classes = self.minority_classes + self.majority_classes
-            sampled_classes = np.random.choice(
-                all_classes,
-                size=n_way,
-                replace=False
-            )
-        
-        return sampled_classes.tolist()
+            n_min = min(np.random.randint(1, 3), len(self.minority_classes), n_way)
+            minority_pick = np.random.choice(self.minority_classes, size=n_min, replace=False)
+            majority_pick = np.random.choice(self.majority_classes, size=n_way - n_min, replace=False)
+            return np.concatenate([minority_pick, majority_pick]).tolist()
 
-
-def split_meta_train_test(
-    dataset,
-    meta_train_classes: List[int],
-    meta_test_classes: List[int]
-) -> Tuple:
-    """
-    Split dataset into meta-training and meta-testing sets
-    
-    Args:
-        dataset: MedMNIST dataset object
-        meta_train_classes: List of class indices for training
-        meta_test_classes: List of class indices for testing
-    
-    Returns:
-        (train_data, train_labels), (test_data, test_labels)
-    """
-    images = dataset.imgs  # Shape: (N, 28, 28, 3) or (N, 28, 28, 1)
-    labels = dataset.labels.flatten()  # Shape: (N,)
-    
-    # Create masks
-    train_mask = np.isin(labels, meta_train_classes)
-    test_mask = np.isin(labels, meta_test_classes)
-    
-    # Split data
-    train_data = images[train_mask]
-    train_labels = labels[train_mask]
-    test_data = images[test_mask]
-    test_labels = labels[test_mask]
-    
-    print(f"\nMeta-Training Set:")
-    print(f"  Classes: {meta_train_classes}")
-    print(f"  Samples: {len(train_data)}")
-    for cls in meta_train_classes:
-        count = np.sum(train_labels == cls)
-        print(f"    Class {cls}: {count} samples")
-    
-    print(f"\nMeta-Testing Set:")
-    print(f"  Classes: {meta_test_classes}")
-    print(f"  Samples: {len(test_data)}")
-    for cls in meta_test_classes:
-        count = np.sum(test_labels == cls)
-        print(f"    Class {cls}: {count} samples")
-    
-    return (train_data, train_labels), (test_data, test_labels)
-
-
-if __name__ == "__main__":
-    # Test preprocessing
-    preprocessor = DermaMNISTPreprocessor()
-    
-    # Test with RGB image (28, 28, 3)
-    print("Testing RGB image (28, 28, 3):")
-    dummy_image_rgb = np.random.randint(0, 256, (28, 28, 3), dtype=np.uint8)
-    preprocessed_rgb = preprocessor.preprocess_image(dummy_image_rgb)
-    print(f"  Input shape: {dummy_image_rgb.shape}")
-    print(f"  Output shape: {preprocessed_rgb.shape}")
-    print(f"  Output range: [{preprocessed_rgb.min():.3f}, {preprocessed_rgb.max():.3f}]")
-    
-    # Test with grayscale image (28, 28, 1)
-    print("\nTesting grayscale image (28, 28, 1):")
-    dummy_image_gray = np.random.randint(0, 256, (28, 28, 1), dtype=np.uint8)
-    preprocessed_gray = preprocessor.preprocess_image(dummy_image_gray)
-    print(f"  Input shape: {dummy_image_gray.shape}")
-    print(f"  Output shape: {preprocessed_gray.shape}")
-    print(f"  Output range: [{preprocessed_gray.min():.3f}, {preprocessed_gray.max():.3f}]")
-    
-    # Test with 2D grayscale (28, 28)
-    print("\nTesting 2D grayscale image (28, 28):")
-    dummy_image_2d = np.random.randint(0, 256, (28, 28), dtype=np.uint8)
-    preprocessed_2d = preprocessor.preprocess_image(dummy_image_2d)
-    print(f"  Input shape: {dummy_image_2d.shape}")
-    print(f"  Output shape: {preprocessed_2d.shape}")
-    print(f"  Output range: [{preprocessed_2d.min():.3f}, {preprocessed_2d.max():.3f}]")
-    
-    print("\nAll preprocessing tests successful! ✓")
+        return np.random.choice(all_classes, size=n_way, replace=False).tolist()

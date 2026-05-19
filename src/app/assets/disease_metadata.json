@@ -1,0 +1,93 @@
+{
+    "0": {
+        "name": "Actinic keratoses",
+        "description": "Actinic keratoses: rough, scaly, hyperkeratotic patch on sun-damaged skin with erythematous base and dotted vessels — precancerous lesion on sun-exposed sites.",
+        "risk": "medium",
+        "refer_threshold": 0.50,
+        "reference_images": [
+            "assets/reference_images/cls_0_ref_0.jpg",
+            "assets/reference_images/cls_0_ref_1.jpg",
+            "assets/reference_images/cls_0_ref_2.jpg",
+            "assets/reference_images/cls_0_ref_3.jpg",
+            "assets/reference_images/cls_0_ref_4.jpg"
+        ]
+    },
+    "1": {
+        "name": "Basal cell carcinoma",
+        "description": "Basal cell carcinoma: pearly translucent papule with arborizing vessels, leaf-like areas, blue-grey ovoid nests, and shiny white structures — locally invasive skin malignancy.",
+        "risk": "high",
+        "refer_threshold": 0.25,
+        "reference_images": [
+            "assets/reference_images/cls_1_ref_0.jpg",
+            "assets/reference_images/cls_1_ref_1.jpg",
+            "assets/reference_images/cls_1_ref_2.jpg",
+            "assets/reference_images/cls_1_ref_3.jpg",
+            "assets/reference_images/cls_1_ref_4.jpg"
+        ]
+    },
+    "2": {
+        "name": "Benign keratosis",
+        "description": "Benign keratosis: stuck-on seborrheic keratosis with cerebriform surface, milia-like cysts, comedo-like openings, and well-demarcated borders.",
+        "risk": "low",
+        "refer_threshold": 0.80,
+        "reference_images": [
+            "assets/reference_images/cls_2_ref_0.jpg",
+            "assets/reference_images/cls_2_ref_1.jpg",
+            "assets/reference_images/cls_2_ref_2.jpg",
+            "assets/reference_images/cls_2_ref_3.jpg",
+            "assets/reference_images/cls_2_ref_4.jpg"
+        ]
+    },
+    "3": {
+        "name": "Dermatofibroma",
+        "description": "Dermatofibroma: central white scar-like patch surrounded by delicate peripheral pigment network — firm benign dermal papule with positive dimple sign.",
+        "risk": "low",
+        "refer_threshold": 0.80,
+        "reference_images": [
+            "assets/reference_images/cls_3_ref_0.jpg",
+            "assets/reference_images/cls_3_ref_1.jpg",
+            "assets/reference_images/cls_3_ref_2.jpg",
+            "assets/reference_images/cls_3_ref_3.jpg",
+            "assets/reference_images/cls_3_ref_4.jpg"
+        ]
+    },
+    "4": {
+        "name": "Melanoma",
+        "description": "Melanoma: asymmetric lesion with atypical pigment network, blue-white veil, regression structures, irregular streaks, and multiple colours — malignant melanocytic tumour.",
+        "risk": "high",
+        "refer_threshold": 0.20,
+        "reference_images": [
+            "assets/reference_images/cls_4_ref_0.jpg",
+            "assets/reference_images/cls_4_ref_1.jpg",
+            "assets/reference_images/cls_4_ref_2.jpg",
+            "assets/reference_images/cls_4_ref_3.jpg",
+            "assets/reference_images/cls_4_ref_4.jpg"
+        ]
+    },
+    "5": {
+        "name": "Melanocytic nevi",
+        "description": "Melanocytic nevi: benign symmetric mole with regular pigment network, uniform brown-to-black colour, smooth borders, and homogeneous or globular pattern.",
+        "risk": "low",
+        "refer_threshold": 0.80,
+        "reference_images": [
+            "assets/reference_images/cls_5_ref_0.jpg",
+            "assets/reference_images/cls_5_ref_1.jpg",
+            "assets/reference_images/cls_5_ref_2.jpg",
+            "assets/reference_images/cls_5_ref_3.jpg",
+            "assets/reference_images/cls_5_ref_4.jpg"
+        ]
+    },
+    "6": {
+        "name": "Vascular lesions",
+        "description": "Vascular lesions: cherry angioma or pyogenic granuloma with red to purple lacunae, reddish homogeneous area, sharp borders, and no pigment network.",
+        "risk": "low",
+        "refer_threshold": 0.80,
+        "reference_images": [
+            "assets/reference_images/cls_6_ref_0.jpg",
+            "assets/reference_images/cls_6_ref_1.jpg",
+            "assets/reference_images/cls_6_ref_2.jpg",
+            "assets/reference_images/cls_6_ref_3.jpg",
+            "assets/reference_images/cls_6_ref_4.jpg"
+        ]
+    }
+}

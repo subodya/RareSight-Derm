@@ -39,3 +39,11 @@ wandb==0.15.12
 # Jupyter
 jupyter==1.0.0
 ipykernel==6.25.2
+
+# Web API (FastAPI backend)
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.12
+
+# HuggingFace datasets (HAM10000 download)
+datasets>=2.20.0
