@@ -45,6 +45,8 @@ export {
   Eye,
   EyeOff,
   Edit2 as Edit,
+  Trash2 as Trash,
+  Save,
   Crosshair,
   Folder,
   Users,

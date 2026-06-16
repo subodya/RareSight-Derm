@@ -1,32 +1,76 @@
 import { useState, useEffect } from 'react'
-import { Search, Filter, Upload, ArrowRight, X, Dna, Calendar, Globe, Database, Crosshair } from '../icons'
-import { CategoryPill, PlaceholderImage, KpiCard } from '../components/common'
-import { DISEASES, LIBRARY_KPIS } from '../data'
+import { Search, Upload, ArrowRight, X, Dna, Calendar, Globe, Database, AlertTriangle } from '../icons'
+import { CategoryPill, KpiCard } from '../components/common'
+import { getDiseases } from '../api'
 import ContributeModal from './ContributeModal'
 
 export default function Library() {
-  const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState('All')
+  const [diseases, setDiseases] = useState(null)
+  const [error, setError]       = useState(null)
+  const [query, setQuery]       = useState('')
+  const [filter, setFilter]     = useState('All')
   const [selected, setSelected] = useState(null)
   const [contributing, setContributing] = useState(false)
 
+  useEffect(() => {
+    getDiseases().then(setDiseases).catch(e => setError(e.message))
+  }, [])
+
   const categories = ['All', 'Malignant', 'Benign', 'Precancerous']
 
-  const filtered = DISEASES.filter(d => {
+  if (error) {
+    return (
+      <div className="page fade-up">
+        <div className="card" style={{ padding: 40, textAlign: 'center' }}>
+          <AlertTriangle size={28} style={{ color: 'var(--warn-ink)', margin: '0 auto 12px' }} />
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Library unavailable</div>
+          <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+            Could not reach the RareSight backend ({error}). Start it and reload.
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!diseases) return <LibrarySkeleton />
+
+  const filtered = diseases.filter(d => {
     const q = query.toLowerCase()
     const matchQuery = q === '' ||
       d.name.toLowerCase().includes(q) ||
       d.code.toLowerCase().includes(q) ||
-      d.summary.toLowerCase().includes(q)
+      d.description.toLowerCase().includes(q) ||
+      d.riskFactors.toLowerCase().includes(q)
     const matchFilter = filter === 'All' || d.category === filter
     return matchQuery && matchFilter
   })
+
+  const kpis = [
+    {
+      label: 'Documented Cases',
+      value: diseases.reduce((s, d) => s + (d.cases || 0), 0).toLocaleString(),
+      trend: 'HAM10000', trendKind: 'badge',
+      sub: 'Dermoscopy images in the source dataset',
+    },
+    {
+      label: 'Disease Classes',
+      value: String(diseases.length),
+      trend: 'ISIC dx', trendKind: 'badge',
+      sub: 'Conditions covered by the model',
+    },
+    {
+      label: 'Reference Images',
+      value: String(diseases.reduce((s, d) => s + d.gallery.length, 0)),
+      trend: 'Curated', trendKind: 'badge',
+      sub: 'Histopathology-confirmed examples',
+    },
+  ]
 
   return (
     <div className="page fade-up">
       {/* KPI strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 28 }}>
-        {LIBRARY_KPIS.map((k, i) => <KpiCard key={i} {...k} />)}
+        {kpis.map((k, i) => <KpiCard key={i} {...k} />)}
       </div>
 
       {/* Search + filters */}
@@ -35,7 +79,7 @@ export default function Library() {
           <Search size={16} style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
           <input
             type="text"
-            placeholder="Search by disease name, ICD-10 code, morphology, or clinical sign…"
+            placeholder="Search by disease name, ICD-10 code, morphology, or risk factor…"
             value={query}
             onChange={e => setQuery(e.target.value)}
             className="input"
@@ -61,19 +105,15 @@ export default function Library() {
               {cat}
             </button>
           ))}
-          <div style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 6px' }} />
-          <button className="btn btn-ghost" style={{ padding: '7px 14px', fontSize: 12 }}>
-            <Filter size={13} /> Advanced Filters
-          </button>
           <div style={{ flex: 1 }} />
-          <span style={{ fontSize: 12, color: 'var(--muted)' }}>{filtered.length} of {DISEASES.length} diseases</span>
+          <span style={{ fontSize: 12, color: 'var(--muted)' }}>{filtered.length} of {diseases.length} diseases</span>
         </div>
       </div>
 
       {/* Cards grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-        {filtered.map((d, i) => (
-          <DiseaseCard key={d.name} d={d} seed={i + 1} onOpen={() => setSelected(d)} />
+        {filtered.map(d => (
+          <DiseaseCard key={d.id} d={d} onOpen={() => setSelected(d)} />
         ))}
         <ContributeCard onClick={() => setContributing(true)} />
       </div>
@@ -84,7 +124,7 @@ export default function Library() {
   )
 }
 
-function DiseaseCard({ d, seed, onOpen }) {
+function DiseaseCard({ d, onOpen }) {
   return (
     <div
       className="card"
@@ -94,10 +134,22 @@ function DiseaseCard({ d, seed, onOpen }) {
       onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)' }}
     >
       <div style={{ position: 'relative' }}>
-        <PlaceholderImage label={`${d.modality} · REFERENCE`} height={190} radius={0} seed={seed * 3} />
+        <img
+          src={d.hero_image}
+          alt={`${d.name} dermoscopy`}
+          loading="lazy"
+          style={{ width: '100%', height: 190, objectFit: 'cover', display: 'block' }}
+        />
         <div style={{ position: 'absolute', top: 12, left: 12 }}>
           <CategoryPill category={d.category} />
         </div>
+        <span style={{
+          position: 'absolute', bottom: 10, right: 10, fontSize: 9, fontWeight: 700,
+          padding: '3px 8px', borderRadius: 6, letterSpacing: '0.06em',
+          background: 'rgba(14,26,54,0.65)', color: '#fff', fontFamily: "'JetBrains Mono',monospace",
+        }}>
+          DERMOSCOPY · HAM10000
+        </span>
       </div>
       <div style={{ padding: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
@@ -107,10 +159,10 @@ function DiseaseCard({ d, seed, onOpen }) {
         <p style={{
           fontSize: 12, color: 'var(--muted)', lineHeight: 1.5, marginBottom: 14,
           display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-        }}>{d.summary}</p>
+        }}>{d.description}</p>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTop: '1px solid var(--border)' }}>
           <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-            <span className="mono" style={{ color: 'var(--ink)', fontWeight: 600 }}>{d.cases}</span> cases
+            <span className="mono" style={{ color: 'var(--ink)', fontWeight: 600 }}>{(d.cases || 0).toLocaleString()}</span> documented cases
           </span>
           <button style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--bg-2)', display: 'grid', placeItems: 'center', color: 'var(--primary)' }}>
             <ArrowRight size={14} />
@@ -149,11 +201,15 @@ function ContributeCard({ onClick }) {
 }
 
 function DiseaseModal({ disease, onClose }) {
+  const [heroIdx, setHeroIdx] = useState(0)
+
   useEffect(() => {
     const h = e => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', h)
     return () => document.removeEventListener('keydown', h)
   }, [onClose])
+
+  const hero = disease.gallery[heroIdx] || disease.hero_image
 
   return (
     <div
@@ -172,7 +228,11 @@ function DiseaseModal({ disease, onClose }) {
         }}
       >
         <div style={{ position: 'relative' }}>
-          <PlaceholderImage label={`${disease.modality} · TYPICAL PRESENTATION`} height={240} radius={0} seed={4} />
+          <img
+            src={hero}
+            alt={`${disease.name} — typical presentation`}
+            style={{ width: '100%', height: 280, objectFit: 'cover', display: 'block' }}
+          />
           <button
             onClick={onClose}
             style={{
@@ -189,33 +249,42 @@ function DiseaseModal({ disease, onClose }) {
         </div>
 
         <div style={{ padding: '28px 32px 32px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14 }}>
-            <div>
-              <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>{disease.name}</h2>
-              <div className="mono" style={{ fontSize: 12, color: 'var(--muted)' }}>ICD-10 · {disease.code}</div>
-            </div>
-            <button className="btn btn-primary"><Crosshair size={14} /> Compare to Case</button>
+          <div>
+            <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>{disease.name}</h2>
+            <div className="mono" style={{ fontSize: 12, color: 'var(--muted)' }}>ICD-10 · {disease.code}</div>
           </div>
 
-          <p style={{ marginTop: 16, fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.6 }}>{disease.summary}</p>
+          <p style={{ marginTop: 16, fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.6 }}>{disease.description}</p>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginTop: 22 }}>
             <Fact icon={<Dna size={16} />} label="Risk Factors" value={disease.riskFactors} />
-            <Fact icon={<Calendar size={16} />} label="Typical Onset" value={disease.age} />
+            <Fact icon={<Calendar size={16} />} label="Typical Onset" value={disease.ageGroup} />
             <Fact icon={<Globe size={16} />} label="Prevalence" value={disease.prevalence} />
-            <Fact icon={<Database size={16} />} label="Documented" value={disease.cases} />
+            <Fact icon={<Database size={16} />} label="Documented" value={(disease.cases || 0).toLocaleString()} />
           </div>
 
-          <h3 style={{ fontSize: 14, fontWeight: 700, marginTop: 26, marginBottom: 12 }}>Reference Cases</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
-            {[0,1,2,3,4].map(i => (
-              <PlaceholderImage key={i} label="" height={100} seed={i + 13} radius={8} />
+          <h3 style={{ fontSize: 14, fontWeight: 700, marginTop: 26, marginBottom: 12 }}>
+            Reference Cases <span style={{ fontWeight: 500, color: 'var(--muted)', fontSize: 12 }}>· histopathology-confirmed dermoscopy (click to enlarge)</span>
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 8 }}>
+            {disease.gallery.map((url, i) => (
+              <img
+                key={url}
+                src={url}
+                alt={`${disease.name} reference ${i + 1}`}
+                loading="lazy"
+                onClick={() => setHeroIdx(i)}
+                style={{
+                  width: '100%', height: 72, objectFit: 'cover', borderRadius: 8, cursor: 'pointer',
+                  border: i === heroIdx ? '2px solid var(--primary)' : '1px solid var(--border)',
+                }}
+              />
             ))}
           </div>
 
           <h3 style={{ fontSize: 14, fontWeight: 700, marginTop: 22, marginBottom: 10 }}>Diagnostic Criteria</h3>
           <ul style={{ paddingLeft: 18, fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.7 }}>
-            {(disease.criteria || [
+            {(disease.criteria?.length ? disease.criteria : [
               'Visual inspection of lesion morphology and border characteristics',
               'Dermoscopic pattern analysis (ABCDE criteria)',
               'Histopathological confirmation for definitive diagnosis',
@@ -236,6 +305,23 @@ function Fact({ icon, label, value }) {
         <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{label}</span>
       </div>
       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{value}</div>
+    </div>
+  )
+}
+
+function LibrarySkeleton() {
+  const block = (h, extra = {}) => (
+    <div className="shimmer" style={{ height: h, borderRadius: 14, ...extra }} />
+  )
+  return (
+    <div className="page fade-up">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 28 }}>
+        {block(120)}{block(120)}{block(120)}
+      </div>
+      {block(110, { marginBottom: 24 })}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+        {block(380)}{block(380)}{block(380)}{block(380)}{block(380)}{block(380)}
+      </div>
     </div>
   )
 }

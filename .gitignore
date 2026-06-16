@@ -30,35 +30,25 @@ Thumbs.db
 
 # Logs
 *.log
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.egg-info/
 
-# Virtual environments
-venv/
-.env/
+# App runtime state (local scan history)
+src/app/assets/raresight.db
+src/app/assets/case_uploads/
 
-# Jupyter
-.ipynb_checkpoints/
+# Build output
+src/app/frontend/dist/
 
-# Data (DO NOT PUSH DATASETS)
-data/raw/
-data/processed/
+# Node dependencies
+node_modules/
 
-# Experiments / outputs
-experiments/
-runs/
-checkpoints/
+# Large datasets (do not commit)
+data/pad_ufes20/
 
-# OS
-.DS_Store
-Thumbs.db
+# Model artifact backups
+*_backup_*.pt
 
-# IDE
-.vscode/
+# Working notes / scratch
+memory/
 
-# Logs
-*.log
+# Editor / tooling local config
+.claude/

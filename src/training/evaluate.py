@@ -1,6 +1,13 @@
 """
 Full evaluation of RareSight on the HAM10000 test split.
 
+This evaluates the DEPLOYED prototype recipe — the aligned-space M3 blend
+(proto = norm(beta*image_proto + (1-beta)*norm(cupl_text + lam*gap))) that
+precompute.py/inference.py actually ship — NOT the legacy MLP-fusion forward()
+path (which an ablation showed HURTS: 54.7% < image-only 57.4%). Set
+EVAL_MODE=fusion to reproduce the old/deprecated forward() number for the record,
+or EVAL_MODE=image_only for the no-text baseline.
+
 Computes over N_EPISODES episodic trials:
   - Overall 5-way 5-shot accuracy
   - Per-class accuracy, precision, recall, F1, support
@@ -13,7 +20,9 @@ Saves results to: checkpoints/eval_results.json
 Prints a formatted table to stdout.
 
 Usage:
-    python src/training/evaluate.py
+    python src/training/evaluate.py                 # M3 (deployed, default)
+    EVAL_MODE=fusion python src/training/evaluate.py
+    EVAL_SEED=42 python src/training/evaluate.py     # reproducible episodes
 """
 
 import sys
@@ -39,11 +48,18 @@ from src.data.dataset import EpisodicDermaMNIST
 N_WAY      = 5
 K_SHOT     = 5
 N_QUERY    = 15
-N_EPISODES = 600
+N_EPISODES = int(os.environ.get("EVAL_EPISODES", "600"))
 N_CLASSES  = 7
-CKPT_PATH  = "checkpoints/raresight_finetuned.pth"
+CKPT_PATH  = "checkpoints/raresight_nblk4mix.pth"
 OUT_PATH   = "checkpoints/eval_results.json"
 DESC_PATH  = os.path.join(os.path.dirname(__file__), "../../src/app/class_descriptions.json")
+BLEND_PATH = os.path.join(os.path.dirname(__file__), "../../src/app/assets/blend_params.pt")
+
+# Which prototype recipe to evaluate. "m3" = deployed aligned CuPL+gap blend (default);
+# "fusion" = legacy MLP fusion forward() (deprecated, hurts); "image_only" = no-text baseline.
+EVAL_MODE  = os.environ.get("EVAL_MODE", "m3").lower()
+EVAL_SEED  = os.environ.get("EVAL_SEED")   # set for reproducible episodes (e.g. "42")
+assert EVAL_MODE in {"m3", "fusion", "image_only"}, f"Unknown EVAL_MODE={EVAL_MODE!r}"
 
 CLASS_NAMES = {
     0: "Actinic keratoses",
@@ -54,6 +70,10 @@ CLASS_NAMES = {
     5: "Melanocytic nevi",
     6: "Vascular lesions",
 }
+
+
+def _norm(x):
+    return x / x.norm(dim=-1, keepdim=True)
 
 
 # ── ECE helper ────────────────────────────────────────────────────────────────
@@ -99,7 +119,33 @@ def main():
     state = torch.load(CKPT_PATH, map_location=device)
     model.load_state_dict(state, strict=False)
     model.eval()
-    print(f"Loaded weights. alpha={model.alpha.item():.4f}  temperature={model.temperature.item():.4f}\n")
+    temp = model.temperature.item()
+    print(f"Loaded weights. alpha={model.alpha.item():.4f}  temperature={temp:.4f}")
+    print(f"Eval mode: {EVAL_MODE}" + (f"  (seed={EVAL_SEED})" if EVAL_SEED else "  (unseeded)"))
+
+    # Reproducible episodes if requested (test split sampling uses np.random).
+    if EVAL_SEED is not None:
+        np.random.seed(int(EVAL_SEED))
+        torch.manual_seed(int(EVAL_SEED))
+
+    # ── M3 deployed recipe: per-class gap-shifted CuPL text + blend params ──────
+    beta = lam = None
+    txt_m3 = None
+    if EVAL_MODE == "m3":
+        if not os.path.exists(BLEND_PATH):
+            raise FileNotFoundError(
+                f"M3 blend params not found: {BLEND_PATH}\nRun precompute.py first, "
+                "or use EVAL_MODE=fusion / EVAL_MODE=image_only."
+            )
+        blend = torch.load(BLEND_PATH, map_location=device)
+        beta, lam = float(blend["beta"]), float(blend["lam"])
+        gap = blend["gap"].to(device)
+        txt_m3 = _norm(
+            torch.stack([blend["text_embs"][c].to(device) for c in range(N_CLASSES)]) + lam * gap
+        )  # (N_CLASSES, 512) — gap-corrected CuPL text embedding per class
+        print(f"M3 recipe: beta={beta}  lam={lam}  |gap|={gap.norm():.3f}\n")
+    else:
+        print()
 
     # Storage
     all_preds_global  = []   # predicted global class id
@@ -122,13 +168,26 @@ def main():
             s_img = s_img.to(device)
             q_img = q_img.to(device)
             q_lbl_local = q_lbl_local.to(device)
+            orig_cls_ids = np.array(orig_cls)
 
-            s_txt = [
-                descriptions.get(str(c), "dermoscopy image of a skin lesion")
-                for c in orig_cls for _ in range(K_SHOT)
-            ]
+            if EVAL_MODE == "fusion":
+                # Legacy MLP-fusion forward() (deprecated — kept for the record).
+                s_txt = [
+                    descriptions.get(str(c), "dermoscopy image of a skin lesion")
+                    for c in orig_cls for _ in range(K_SHOT)
+                ]
+                logits = model(s_img, s_txt, q_img, N_WAY, K_SHOT)
+            else:
+                # Image prototypes (shared by m3 + image_only).
+                s_emb = _norm(model.backbone.encode_image(s_img)).view(N_WAY, K_SHOT, -1)
+                img_proto = _norm(s_emb.mean(dim=1))                     # (N_WAY, 512)
+                if EVAL_MODE == "m3":
+                    proto = _norm(beta * img_proto + (1 - beta) * txt_m3[orig_cls_ids])
+                else:  # image_only
+                    proto = img_proto
+                q_emb = _norm(model.backbone.encode_image(q_img))
+                logits = -torch.cdist(q_emb, proto) * temp
 
-            logits = model(s_img, s_txt, q_img, N_WAY, K_SHOT)
             probs  = torch.softmax(logits, dim=1).cpu().numpy()   # (N*Q, N_WAY)
             preds_local = probs.argmax(axis=1)                    # 0..N-1
 
@@ -211,6 +270,7 @@ def main():
     print(f"\n{sep}")
     print("  RareSight  —  Full Evaluation Results")
     print(f"  Checkpoint : {CKPT_PATH}")
+    print(f"  Eval mode  : {EVAL_MODE}" + (f"  (beta={beta}, lam={lam})" if EVAL_MODE == "m3" else ""))
     print(f"  Episodes   : {N_EPISODES} × {N_WAY}-way {K_SHOT}-shot  ({N_EPISODES*N_WAY*N_QUERY:,} query predictions)")
     print(f"  Elapsed    : {elapsed:.1f} min")
     print(sep)
@@ -248,6 +308,10 @@ def main():
     # ── Save JSON ─────────────────────────────────────────────────────────────
     results = {
         "checkpoint": CKPT_PATH,
+        "eval_mode": EVAL_MODE,
+        "eval_seed": int(EVAL_SEED) if EVAL_SEED is not None else None,
+        "m3_beta": beta,
+        "m3_lam": lam,
         "n_episodes": N_EPISODES,
         "n_way": N_WAY,
         "k_shot": K_SHOT,

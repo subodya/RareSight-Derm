@@ -1,12 +1,32 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { User, Stethoscope, Settings, Shield, Award, Logout, Edit,
   Hash, Mail, Phone, MapPin, Calendar, Heart, Check, CheckCircle,
   Upload, Crosshair, Cpu, Users, Sparkle } from '../icons'
 import { Avatar } from '../components/common'
-import { PROFILE } from '../data'
+import { getProfile } from '../api'
+import { PROFILE as PROFILE_FALLBACK } from '../data'
 
 export default function Profile() {
   const [section, setSection] = useState('account')
+  const [profile, setProfile] = useState(null)
+
+  useEffect(() => {
+    getProfile().then(setProfile).catch(() => setProfile({ ...PROFILE_FALLBACK, stats: null }))
+  }, [])
+
+  if (!profile) {
+    return (
+      <div className="page fade-up">
+        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 28 }}>
+          <div className="shimmer" style={{ height: 320, borderRadius: 14 }} />
+          <div className="shimmer" style={{ height: 420, borderRadius: 14 }} />
+        </div>
+      </div>
+    )
+  }
+
+  const PROFILE = profile
+  const stats = profile.stats || { scans: 0, confirmed: 0, referrals: 0, avg_confidence: null }
 
   const navItems = [
     { id: 'account', label: 'Account', Icon: User },
@@ -33,15 +53,15 @@ export default function Profile() {
             <div className="divider" style={{ margin: '18px 0' }} />
             <div style={{ display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
               <div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>{PROFILE.scans.toLocaleString()}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>{(stats.scans ?? 0).toLocaleString()}</div>
                 <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Scans</div>
               </div>
               <div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>{PROFILE.confirmed.toLocaleString()}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>{(stats.confirmed ?? 0).toLocaleString()}</div>
                 <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Confirmed</div>
               </div>
               <div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>{PROFILE.referrals}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>{stats.referrals ?? 0}</div>
                 <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Referrals</div>
               </div>
             </div>
@@ -80,8 +100,8 @@ export default function Profile() {
 
         {/* RIGHT: content */}
         <div>
-          {section === 'account'      && <AccountSection />}
-          {section === 'practice'     && <PracticeSection />}
+          {section === 'account'      && <AccountSection p={PROFILE} stats={stats} />}
+          {section === 'practice'     && <PracticeSection p={PROFILE} />}
           {section === 'preferences'  && <PreferencesSection />}
           {section === 'security'     && <SecuritySection />}
           {section === 'achievements' && <AchievementsSection />}
@@ -120,7 +140,9 @@ function Field({ label, value, icon, mono }) {
   )
 }
 
-function AccountSection() {
+function AccountSection({ p, stats }) {
+  const avgConf = stats?.avg_confidence != null ? `${(stats.avg_confidence * 100).toFixed(1)}%` : '—'
+  const confirmRate = stats?.scans > 0 ? `${((stats.confirmed / stats.scans) * 100).toFixed(1)}%` : '—'
   return (
     <div className="card" style={{ padding: 28 }}>
       <SectionTitle
@@ -129,19 +151,19 @@ function AccountSection() {
         action={<button className="btn btn-ghost"><Edit size={13} /> Edit</button>}
       />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
-        <Field label="Full Name"    value={PROFILE.name}    icon={<User size={14} style={{ color: 'var(--muted)' }} />} />
-        <Field label="License ID"   value={PROFILE.license} icon={<Hash size={14} style={{ color: 'var(--muted)' }} />} mono />
-        <Field label="Email"        value={PROFILE.email}   icon={<Mail size={14} style={{ color: 'var(--muted)' }} />} />
-        <Field label="Phone"        value={PROFILE.phone}   icon={<Phone size={14} style={{ color: 'var(--muted)' }} />} />
-        <Field label="Specialty"    value={PROFILE.title}   icon={<Stethoscope size={14} style={{ color: 'var(--muted)' }} />} />
-        <Field label="Member Since" value={PROFILE.joined}  icon={<Calendar size={14} style={{ color: 'var(--muted)' }} />} />
+        <Field label="Full Name"    value={p.name}    icon={<User size={14} style={{ color: 'var(--muted)' }} />} />
+        <Field label="License ID"   value={p.license} icon={<Hash size={14} style={{ color: 'var(--muted)' }} />} mono />
+        <Field label="Email"        value={p.email}   icon={<Mail size={14} style={{ color: 'var(--muted)' }} />} />
+        <Field label="Phone"        value={p.phone}   icon={<Phone size={14} style={{ color: 'var(--muted)' }} />} />
+        <Field label="Specialty"    value={p.title}   icon={<Stethoscope size={14} style={{ color: 'var(--muted)' }} />} />
+        <Field label="Member Since" value={p.joined}  icon={<Calendar size={14} style={{ color: 'var(--muted)' }} />} />
       </div>
       <div className="divider" style={{ margin: '26px 0' }} />
       <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Diagnostic Performance</h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-        <PerfCard label="Avg. AI Confidence"   value="94.2%" sub="Top-1 prediction" />
-        <PerfCard label="Confirmation Rate"     value="95.4%" sub="Diagnoses confirmed without revision" />
-        <PerfCard label="Time per Case"         value="3m 41s" sub="Median triage time" />
+        <PerfCard label="Avg. AI Confidence"   value={avgConf} sub="Top-1 prediction (calibrated), all cases" />
+        <PerfCard label="Cases Reviewed"        value={String(stats?.confirmed ?? 0)} sub="Of total scans on record" />
+        <PerfCard label="Referrals Suggested"   value={String(stats?.referrals ?? 0)} sub="Flagged for specialist review" />
       </div>
     </div>
   )
@@ -157,13 +179,13 @@ function PerfCard({ label, value, sub }) {
   )
 }
 
-function PracticeSection() {
+function PracticeSection({ p }) {
   return (
     <div className="card" style={{ padding: 28 }}>
       <SectionTitle title="Practice" sub="Your clinic and patient population" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 24 }}>
-        <Field label="Practice"      value={PROFILE.practice}        icon={<Stethoscope size={14} style={{ color: 'var(--muted)' }} />} />
-        <Field label="Location"      value={PROFILE.location}        icon={<MapPin size={14} style={{ color: 'var(--muted)' }} />} />
+        <Field label="Practice"      value={p.practice}        icon={<Stethoscope size={14} style={{ color: 'var(--muted)' }} />} />
+        <Field label="Location"      value={p.location}        icon={<MapPin size={14} style={{ color: 'var(--muted)' }} />} />
         <Field label="Patient Panel" value="412 active patients"     icon={<Users size={14} style={{ color: 'var(--muted)' }} />} />
         <Field label="Case Focus"    value="68% dermatology consults" icon={<Heart size={14} style={{ color: 'var(--muted)' }} />} />
       </div>

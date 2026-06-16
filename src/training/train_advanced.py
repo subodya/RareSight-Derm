@@ -2,8 +2,10 @@
 Advanced RareSight training script.
 - EpisodicDermaMNIST (HAM10000) dataset
 - FocalLoss (gamma=2) for hard-example focus
-- 3 ViT blocks unfrozen with differential learning rates
-- Val accuracy checkpointing every 500 episodes
+- BiomedCLIP backbone FROZEN (N_UNFREEZE=0): unfreezing the ViT overfit the tiny
+  trainable signal and collapsed val acc (61%@ep1500 -> 52%@ep8000). Train only
+  the fusion net + alpha + temperature.
+- Val accuracy checkpointing + early stopping on val plateau
 - Training log saved to checkpoints/training_log.json
 """
 
@@ -28,14 +30,16 @@ from src.data.dataset import EpisodicDermaMNIST
 N_WAY = 5
 K_SHOT = 5
 N_QUERY = 15
-EPISODES = 8000
-LR_BACKBONE = 5e-6   # unfrozen ViT blocks — stay close to pretrained init
-LR_FUSION = 1e-4     # fusion net + alpha
+EPISODES = int(os.environ.get("RS_EPISODES", "3000"))   # peak was ~ep1500; no need for 8000
+LR_BACKBONE = 5e-6   # only used if N_UNFREEZE > 0
+LR_FUSION = 1e-4     # fusion net + alpha + temperature
 WEIGHT_DECAY = 1e-4
-N_UNFREEZE = 3       # how many final ViT blocks to unfreeze
-VAL_INTERVAL = 500
-VAL_EPISODES = 100
-CKPT_DIR = "checkpoints"
+N_UNFREEZE = 0       # 0 = keep BiomedCLIP fully frozen (see module docstring)
+VAL_INTERVAL = int(os.environ.get("RS_VAL_INTERVAL", "250"))
+VAL_EPISODES = int(os.environ.get("RS_VAL_EPISODES", "100"))
+PATIENCE = 4         # early-stop after this many val checks without improvement
+# Output dir is overridable so smoke tests don't clobber real checkpoints.
+CKPT_DIR = os.environ.get("RS_CKPT_DIR", "checkpoints")
 CKPT_BEST = os.path.join(CKPT_DIR, "raresight_best.pth")
 CKPT_LAST = os.path.join(CKPT_DIR, "raresight_last.pth")
 LOG_PATH = os.path.join(CKPT_DIR, "training_log.json")
@@ -103,17 +107,21 @@ def main():
     # Model
     model = RareSight(device=device)
 
-    # Unfreeze last N_UNFREEZE ViT blocks
-    print(f"\nUnfreezing last {N_UNFREEZE} ViT blocks for domain adaptation...")
-    try:
-        blocks = model.backbone.visual.trunk.blocks
-        for block in blocks[-N_UNFREEZE:]:
-            for param in block.parameters():
-                param.requires_grad = True
-        n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        print(f"  Trainable parameters: {n_trainable:,}")
-    except AttributeError as e:
-        print(f"  Warning: could not access ViT blocks ({e}). Backbone stays frozen.")
+    # Optionally unfreeze last N_UNFREEZE ViT blocks. N_UNFREEZE=0 keeps the
+    # backbone fully frozen (recommended — see module docstring).
+    if N_UNFREEZE > 0:
+        print(f"\nUnfreezing last {N_UNFREEZE} ViT blocks for domain adaptation...")
+        try:
+            blocks = model.backbone.visual.trunk.blocks
+            for block in blocks[-N_UNFREEZE:]:
+                for param in block.parameters():
+                    param.requires_grad = True
+        except AttributeError as e:
+            print(f"  Warning: could not access ViT blocks ({e}). Backbone stays frozen.")
+    else:
+        print("\nBackbone fully frozen (N_UNFREEZE=0). Training fusion + alpha + temperature only.")
+    n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"  Trainable parameters: {n_trainable:,}")
 
     model.train()
 
@@ -127,13 +135,10 @@ def main():
         if p.requires_grad and "backbone" not in name
     ]
 
-    optimizer = optim.AdamW(
-        [
-            {"params": backbone_params, "lr": LR_BACKBONE},
-            {"params": fusion_params, "lr": LR_FUSION},
-        ],
-        weight_decay=WEIGHT_DECAY,
-    )
+    param_groups = [{"params": fusion_params, "lr": LR_FUSION}]
+    if backbone_params:  # only add a backbone group when blocks are actually unfrozen
+        param_groups.insert(0, {"params": backbone_params, "lr": LR_BACKBONE})
+    optimizer = optim.AdamW(param_groups, weight_decay=WEIGHT_DECAY)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=EPISODES, eta_min=1e-7
     )
@@ -142,6 +147,7 @@ def main():
     os.makedirs(CKPT_DIR, exist_ok=True)
 
     best_val_acc = 0.0
+    no_improve = 0
     training_log = []
     start_time = time.time()
 
@@ -201,8 +207,16 @@ def main():
 
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
+                no_improve = 0
                 torch.save(model.state_dict(), CKPT_BEST)
                 print(f"  ✓ New best model saved ({best_val_acc:.2f}%)")
+            else:
+                no_improve += 1
+                print(f"  no improvement ({no_improve}/{PATIENCE})")
+                if no_improve >= PATIENCE:
+                    print(f"\nEarly stopping at episode {ep} — val plateaued "
+                          f"for {PATIENCE} checks. Best={best_val_acc:.2f}%")
+                    break
 
     # Save final checkpoint
     torch.save(model.state_dict(), CKPT_LAST)

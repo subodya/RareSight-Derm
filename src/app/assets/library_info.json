@@ -1,0 +1,107 @@
+{
+  "0": {
+    "code": "L57.0",
+    "category": "Precancerous",
+    "ham10000_dx": "akiec",
+    "cases": 439,
+    "riskFactors": "Chronic UV exposure, outdoor occupation, fair skin",
+    "ageGroup": "Onset 40–80 yrs",
+    "prevalence": "1:10 in high-sun populations",
+    "criteria": [
+      "Rough, scaly hyperkeratotic patch on sun-exposed skin",
+      "Strawberry pattern with dotted vessels on dermoscopy",
+      "Erythematous base with surface scale",
+      "Histopathological confirmation if SCC transformation suspected"
+    ]
+  },
+  "1": {
+    "code": "C44.91",
+    "category": "Malignant",
+    "ham10000_dx": "bcc",
+    "cases": 678,
+    "riskFactors": "Cumulative UV exposure, fair skin, immunosuppression",
+    "ageGroup": "Onset 40–70 yrs",
+    "prevalence": "1:5 lifetime risk (high-risk populations)",
+    "criteria": [
+      "Pearly translucent papule with rolled border",
+      "Arborizing (branching) vessels on dermoscopy",
+      "Leaf-like areas, blue-grey ovoid nests, shiny white structures",
+      "Excisional biopsy for definitive diagnosis"
+    ]
+  },
+  "2": {
+    "code": "L82.1",
+    "category": "Benign",
+    "ham10000_dx": "bkl",
+    "cases": 1465,
+    "riskFactors": "Age, sun exposure, genetic predisposition",
+    "ageGroup": "Onset 50+ yrs",
+    "prevalence": "Very common; >90% of adults >65",
+    "criteria": [
+      "Stuck-on appearance with well-demarcated borders",
+      "Milia-like cysts and comedo-like openings on dermoscopy",
+      "Cerebriform (brain-like) surface pattern",
+      "Waxy brown-to-black pigmentation"
+    ]
+  },
+  "3": {
+    "code": "L98.0",
+    "category": "Benign",
+    "ham10000_dx": "df",
+    "cases": 154,
+    "riskFactors": "Minor trauma, insect bites; young adults more common",
+    "ageGroup": "Any age; peak 20–40 yrs",
+    "prevalence": "Common; incidence 1:100",
+    "criteria": [
+      "Firm dermal nodule, typically on lower limbs",
+      "Central white scar-like patch with peripheral pigment network",
+      "Positive dimple sign on lateral compression",
+      "No treatment required unless symptomatic"
+    ]
+  },
+  "4": {
+    "code": "C43.9",
+    "category": "Malignant",
+    "ham10000_dx": "mel",
+    "cases": 1500,
+    "riskFactors": "UV exposure, fair skin, family history, numerous nevi",
+    "ageGroup": "Onset 30–60 yrs",
+    "prevalence": "1:65 lifetime risk",
+    "criteria": [
+      "Asymmetry, border irregularity, colour variegation (ABCDE)",
+      "Atypical pigment network and blue-white veil on dermoscopy",
+      "Multicomponent pattern with regression structures",
+      "Urgent excisional biopsy for histopathological confirmation"
+    ]
+  },
+  "5": {
+    "code": "D22.9",
+    "category": "Benign",
+    "ham10000_dx": "nv",
+    "cases": 8929,
+    "riskFactors": "Genetic factors, UV exposure, fair skin",
+    "ageGroup": "Any age",
+    "prevalence": "Universal; monitor for atypical change",
+    "criteria": [
+      "Symmetric lesion with even pigmentation",
+      "Regular reticular or globular pattern on dermoscopy",
+      "Stable size and colour over time",
+      "Monitor with ABCDE criteria for atypical change"
+    ]
+  },
+  "6": {
+    "code": "D18.01",
+    "category": "Benign",
+    "ham10000_dx": "vasc",
+    "cases": 189,
+    "riskFactors": "Trauma, hormonal factors, age",
+    "ageGroup": "Any age",
+    "prevalence": "1:100 (varies by subtype)",
+    "criteria": [
+      "Red-purple homogeneous papule or nodule",
+      "Vascular lacunae (sharply demarcated red clods) on dermoscopy",
+      "Absence of pigment network",
+      "Includes haemangiomas, angiokeratomas, pyogenic granuloma"
+    ]
+  }
+}

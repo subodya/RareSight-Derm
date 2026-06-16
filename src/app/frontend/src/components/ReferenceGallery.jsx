@@ -19,14 +19,14 @@ export default function ReferenceGallery({ referenceImages, topClassName }) {
 
       <div style={{ padding: 20 }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          {referenceImages.slice(0, 3).map((b64, i) => (
+          {referenceImages.slice(0, 3).map((src, i) => (
             <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
               <div style={{
                 width: 110, height: 110, borderRadius: 12, overflow: 'hidden', position: 'relative',
                 border: '1px solid var(--border)', background: 'var(--bg-2)',
               }}>
                 <img
-                  src={`data:image/jpeg;base64,${b64}`}
+                  src={src.startsWith('/') ? src : `data:image/jpeg;base64,${src}`}
                   alt={`Reference ${i + 1}`}
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />

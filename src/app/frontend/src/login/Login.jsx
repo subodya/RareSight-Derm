@@ -49,51 +49,43 @@ export default function Login({ onLoginDone }) {
     return () => { timers.forEach(clearTimeout); clearTimeout(done) }
   }, [phase])
 
-  // success → exploding
+  // success → leaving (quick opacity fade, no particle explosion)
   useEffect(() => {
     if (phase !== 'success') return
-    const r = setTimeout(() => setPhase('exploding'), 1100)
+    const r = setTimeout(() => setPhase('leaving'), 900)
     return () => clearTimeout(r)
   }, [phase])
 
-  // Safety fallback: if explosion animation stalls (e.g. tab hidden, RAF throttled),
-  // force transition after 4 seconds so the user always gets to the dashboard.
+  // leaving → dashboard. The .screen fade is 400ms; hand off just after it.
   useEffect(() => {
-    if (phase !== 'exploding') return
-    const r = setTimeout(() => onLoginDone(), 4000)
+    if (phase !== 'leaving') return
+    const r = setTimeout(() => onLoginDone(), 420)
     return () => clearTimeout(r)
   }, [phase, onLoginDone])
-
-  const handleExplodeDone = () => onLoginDone()
 
   const enterFromSphere = () => { setHover(false); setPhase('auth') }
   const submit = (e) => { e.preventDefault(); setPhase('verifying') }
   const backToSphere = () => setPhase('sphere')
 
   const sphereDim     = phase === 'auth'
-  const sphereVisible = phase !== 'dashboard'
+  const sphereVisible = true
   const showAuthCard  = phase === 'auth'
-  const showStatusOverlay = phase === 'verifying' || phase === 'success'
+  const showStatusOverlay = phase === 'verifying' || phase === 'success' || phase === 'leaving'
 
   const overlayText =
-    phase === 'verifying' ? statusText :
-    phase === 'success'   ? 'Welcome back, Dr. Mendel' :
+    phase === 'verifying'                          ? statusText :
+    phase === 'success' || phase === 'leaving'     ? 'Welcome back, Dr. Mendel' :
     ''
 
   return (
     <div className={`screen phase-${phase}`} style={{ background: '#E2EBF6' }}>
       {/* SPHERE LAYER */}
       {sphereVisible && (
-        <div className={`stage ${sphereDim ? 'dim' : ''} ${phase === 'exploding' ? 'is-exploding' : ''}`}>
+        <div className={`stage ${sphereDim ? 'dim' : ''}`}>
           <div className="sphere-wrap">
             <ParticleSphere
-              state={
-                phase === 'exploding' ? 'exploding' :
-                phase === 'success'   ? 'success'   :
-                'idle'
-              }
+              state={phase === 'success' || phase === 'leaving' ? 'success' : 'idle'}
               hovering={hover && phase === 'sphere'}
-              onExplodeDone={handleExplodeDone}
             />
 
             {/* Logo — clickable only on sphere phase */}
@@ -116,8 +108,8 @@ export default function Login({ onLoginDone }) {
 
             {/* Status overlay */}
             {showStatusOverlay && (
-              <div className={`status-overlay ${phase === 'success' ? 'is-success' : ''}`} key={overlayText}>
-                {phase === 'success' && <CheckIcon />}
+              <div className={`status-overlay ${phase === 'success' || phase === 'leaving' ? 'is-success' : ''}`} key={overlayText}>
+                {(phase === 'success' || phase === 'leaving') && <CheckIcon />}
                 <span>{overlayText}</span>
               </div>
             )}

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { Upload, Cpu, Check, ArrowUpRight, Microscope, Activity, Sparkles,
-  AlertTriangle, Stethoscope, Refresh, Download, Share,
+  AlertTriangle, Stethoscope, Refresh, Download,
   CheckCircle, Info } from '../icons'
 import { SectionHeader, RiskPill } from '../components/common'
 import ImageUpload from '../components/ImageUpload'
@@ -9,6 +9,7 @@ import AttentionHeatmap from '../components/AttentionHeatmap'
 import ReferenceGallery from '../components/ReferenceGallery'
 import FewShotRefine from '../components/FewShotRefine'
 import { ANALYSIS_STEPS } from '../data'
+import { predict, caseReportUrl } from '../api'
 
 export default function Scan({ classes, systemStatus }) {
   const [uploadedFile, setUploadedFile]   = useState(null)
@@ -18,8 +19,10 @@ export default function Scan({ classes, systemStatus }) {
   const [result, setResult]               = useState(null)
   const [error, setError]                 = useState(null)
   const [sessionId, setSessionId]         = useState(null)
+  const [patientName, setPatientName]     = useState('')
   const [patientAge, setPatientAge]       = useState('')
   const [patientSex, setPatientSex]       = useState('')
+  const [localization, setLocalization]   = useState('')
   const [scanType, setScanType]           = useState('Dermoscopy')
   const [clinicalNotes, setClinicalNotes] = useState('')
 
@@ -36,6 +39,7 @@ export default function Scan({ classes, systemStatus }) {
     setPreviewUrl(null)
     setResult(null)
     setError(null)
+    setPatientName('')
     setClinicalNotes('')
   }
 
@@ -56,13 +60,14 @@ export default function Scan({ classes, systemStatus }) {
       const fd = new FormData()
       fd.append('file', uploadedFile)
       if (sessionId) fd.append('session_id', sessionId)
+      if (patientName)   fd.append('patient_name', patientName)
+      if (patientAge)    fd.append('age', patientAge)
+      if (patientSex)    fd.append('sex', patientSex)
+      if (localization)  fd.append('localization', localization)
+      if (scanType)      fd.append('scan_type', scanType)
+      if (clinicalNotes) fd.append('clinical_note', clinicalNotes)
 
-      const res = await fetch('/api/predict', { method: 'POST', body: fd })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.detail || `Server error ${res.status}`)
-      }
-      const data = await res.json()
+      const data = await predict(fd)
       setResult(data)
     } catch (e) {
       setError(e.message || 'Analysis failed. Check that the backend is running.')
@@ -92,6 +97,14 @@ export default function Scan({ classes, systemStatus }) {
 
           <div className="card" style={{ padding: 18 }}>
             <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 14, color: 'var(--ink)' }}>Patient Details</h3>
+            <div style={{ marginBottom: 12 }}>
+              <FormField label="Patient Name">
+                <input
+                  type="text" placeholder="Optional — shown on dashboard & report" value={patientName}
+                  onChange={e => setPatientName(e.target.value)} style={inputStyle}
+                />
+              </FormField>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <FormField label="Age">
                 <input
@@ -108,7 +121,15 @@ export default function Scan({ classes, systemStatus }) {
                 </select>
               </FormField>
             </div>
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <FormField label="Anatomical Site">
+                <select value={localization} onChange={e => setLocalization(e.target.value)} style={inputStyle}>
+                  <option value="">Select</option>
+                  {ANATOMICAL_SITES.map(s => (
+                    <option key={s} value={s}>{s.replace(/\b\w/g, c => c.toUpperCase())}</option>
+                  ))}
+                </select>
+              </FormField>
               <FormField label="Scan Modality">
                 <select value={scanType} onChange={e => setScanType(e.target.value)} style={inputStyle}>
                   <option>Dermoscopy</option>
@@ -186,6 +207,8 @@ export default function Scan({ classes, systemStatus }) {
 
           {result && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <EvidenceBanners result={result} />
+
               {/* Top diagnosis hero */}
               <TopDiagnosisCard result={result} />
 
@@ -207,10 +230,18 @@ export default function Scan({ classes, systemStatus }) {
                 topClassName={result.top_class_name}
               />
 
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 6 }}>
-                <button className="btn btn-ghost"><Download size={14} /> Export PDF</button>
-                <button className="btn btn-ghost"><Share size={14} /> Refer</button>
-                <button className="btn btn-primary"><CheckCircle size={14} /> Confirm Diagnosis</button>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', alignItems: 'center', marginTop: 6 }}>
+                {result.case_display_id && (
+                  <span className="mono" style={{ fontSize: 11, color: 'var(--muted)', marginRight: 'auto' }}>
+                    Saved as case #{result.case_display_id}
+                  </span>
+                )}
+                <button className="btn btn-ghost" onClick={handleReset}>
+                  <Refresh size={14} /> New Scan
+                </button>
+                <a className="btn btn-primary" href={caseReportUrl(result.case_id)} download style={{ textDecoration: 'none' }}>
+                  <Download size={14} /> Export Clinical Report (PDF)
+                </a>
               </div>
             </div>
           )}
@@ -219,6 +250,12 @@ export default function Scan({ classes, systemStatus }) {
     </div>
   )
 }
+
+// Must match HAM10000 `localization` values (lowercase) so the backend prior keys align.
+const ANATOMICAL_SITES = [
+  'abdomen', 'acral', 'back', 'chest', 'ear', 'face', 'foot', 'genital', 'hand',
+  'lower extremity', 'neck', 'scalp', 'trunk', 'upper extremity',
+]
 
 const inputStyle = {
   width: '100%', padding: '10px 12px', borderRadius: 10,
@@ -337,7 +374,13 @@ function TopDiagnosisCard({ result }) {
         <ConfidenceRing value={confidence} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Stat label="Entropy" value={(result.entropy ?? 0).toFixed(2)} sub="Uncertainty measure" />
-          <Stat label="Calibration ECE" value="0.07" sub="Well-calibrated model" />
+          <Stat
+            label="Calibration ECE"
+            value={result.calibration_ece != null ? result.calibration_ece.toFixed(3) : '—'}
+            sub={result.calibration_ece != null
+              ? (result.calibration_ece < 0.10 ? 'Well-calibrated (<0.10)' : 'Temperature-scaled')
+              : 'n/a'}
+          />
           <Stat
             label="Recommendation"
             value={result.refer_to_specialist ? 'Refer to specialist' : 'Routine follow-up'}
@@ -345,6 +388,61 @@ function TopDiagnosisCard({ result }) {
             highlight={result.refer_to_specialist}
           />
         </div>
+      </div>
+    </div>
+  )
+}
+
+function EvidenceBanners({ result }) {
+  const meta = result.metadata_used || []
+  const banners = []
+
+  if (result.is_unknown) {
+    banners.push(
+      <Banner key="ood" kind="risk" icon={<AlertTriangle size={14} />}
+        title="Out-of-distribution — possible unknown condition"
+        body="This image does not confidently match any of the 7 known classes. The prediction below is low-trust; manual specialist review is required." />
+    )
+  }
+  if (result.modality_warning) {
+    banners.push(
+      <Banner key="mod" kind="warn" icon={<Info size={14} />}
+        title="Modality mismatch" body={result.modality_warning} />
+    )
+  }
+  if (meta.length) {
+    banners.push(
+      <Banner key="meta" kind="ok" icon={<Activity size={14} />}
+        title={`Patient metadata applied (${meta.join(', ')})`}
+        body={result.metadata_changed_ranking
+          ? 'Age/sex/site evidence changed the top prediction (class-conditional prior).'
+          : 'Age/sex/site evidence refined the ranking via a class-conditional prior.'} />
+    )
+  }
+  if (result.note_used) {
+    banners.push(
+      <Banner key="note" kind="ok" icon={<Stethoscope size={14} />}
+        title="Clinical note matched"
+        body={`Note text most consistent with ${result.note_supports} (BiomedCLIP text match).`} />
+    )
+  }
+  if (!banners.length) return null
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{banners}</div>
+}
+
+function Banner({ kind, icon, title, body }) {
+  const c = kind === 'risk'
+    ? { bg: 'var(--risk-bg)', ink: 'var(--risk-ink)', bd: 'rgba(180,35,24,0.3)' }
+    : kind === 'warn'
+    ? { bg: 'var(--warn-bg)', ink: 'var(--warn-ink)', bd: 'rgba(146,64,14,0.3)' }
+    : { bg: 'var(--ok-bg)', ink: 'var(--ok-ink)', bd: 'rgba(21,128,61,0.25)' }
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: 12, borderRadius: 10,
+      background: c.bg, border: `1px solid ${c.bd}` }}>
+      <span style={{ color: c.ink, flexShrink: 0, marginTop: 1 }}>{icon}</span>
+      <div>
+        <p style={{ fontSize: 12, fontWeight: 700, color: c.ink }}>{title}</p>
+        <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, lineHeight: 1.5 }}>{body}</p>
       </div>
     </div>
   )

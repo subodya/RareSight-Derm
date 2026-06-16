@@ -221,7 +221,10 @@ ul { margin: 0; padding: 0; list-style: none; }
   justify-content: center;
   position: relative;
   overflow: hidden;
+  transition: opacity .4s ease;
 }
+/* Quick fade-out into the dashboard (replaces the particle explosion). */
+.screen.phase-leaving { opacity: 0; }
 .stage {
   position: absolute;
   inset: 0;
@@ -365,8 +368,15 @@ ul { margin: 0; padding: 0; list-style: none; }
   color: var(--primary);
   letter-spacing: 0.01em;
   white-space: nowrap;
-  animation: fadeUp .3s ease both;
+  /* Dedicated keyframe — must preserve the centering translate, otherwise the
+     generic fadeUp's `transform: none` clobbers translateX(-50%) and the pill
+     drifts to the right of the sphere. */
+  animation: statusIn .3s ease both;
   z-index: 3;
+}
+@keyframes statusIn {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)); }
+  to   { opacity: 1; transform: translate(-50%, -50%); }
 }
 .status-overlay.is-success {
   color: var(--ok-ink);
